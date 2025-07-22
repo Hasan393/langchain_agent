@@ -56,3 +56,16 @@ langchain_agent/
 ## 📝 License
 
 MIT License
+
+
+<details>
+<summary>🚀 Future Goals / Roadmap</summary>
+
+### ✅ Goals
+
+- [ ] 🧠 Streamline agent logic for web or Streamlit deployment
+- [ ] 🎨 Design a beautiful and interactive UI (in Streamlit or custom web UI)
+- [ ] 🔧 Optimize performance for faster agent response
+- [ ] 📦 Package into a shareable tool or web app
+
+</details>
