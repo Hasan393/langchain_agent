@@ -1,139 +1,151 @@
-# # agent.py
-# """
-# LangChain agent that:
-# 1. Reads the instruction below and makes decisions.
-# 2. Uses the internet (via DuckDuckGo search).
-# 3. Follows the atomic-habit / Lean-startup / mental-model playbook.
-# 4. Saves output to report.md (report.md1, report.md2 … if already exists).
-# 5. Uses Groq via LangChain (ChatGroq).
-# 6. Loads all keys from .env via python-dotenv.
-# """
+"""
+run_plan.py
+Continuously builds a micro-SaaS business plan until it is finished,
+regardless of token / iteration limits.
+"""
 
-# import os
-# import re
-# from pathlib import Path
-# from typing import List
+import os
+import re
+from pathlib import Path
+from typing import List, Dict, Any
 
-# from dotenv import load_dotenv
-# from langchain.agents import AgentExecutor, create_react_agent
-# from langchain.tools import Tool
-# from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
-# from langchain_groq import ChatGroq
-# from langchain.prompts import PromptTemplate
+from dotenv import load_dotenv
+from langchain_groq import ChatGroq
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain.prompts import PromptTemplate
+from langchain.tools import Tool
+from langchain_community.tools.tavily_search import TavilySearchResults
 
-# # ------------------------------------------------------------------
-# # 0. Load environment variables
-# # ------------------------------------------------------------------
-# load_dotenv()  # looks for .env in cwd
+# --------------------------------------------------
+# 1.  ENVIRONMENT & LLM
+# --------------------------------------------------
+load_dotenv()
 
-# # ------------------------------------------------------------------
-# # 1. LLM (Groq)
-# # ------------------------------------------------------------------
-# llm = ChatGroq(
-#     model="llama3-8b-8192",  # or any Groq model you prefer
-#     temperature=0.2,
-#     groq_api_key=os.getenv("GROQ_API_KEY"),
-# )
+llm = ChatGroq(
+    model="llama3-70b-8192",
+    temperature=0.7,
+)
 
-# # ------------------------------------------------------------------
-# # 2. Internet search tool (DuckDuckGo)
-# # ------------------------------------------------------------------
-# search = DuckDuckGoSearchAPIWrapper(max_results=5)
+# --------------------------------------------------
+# 2.  TOOLS
+# --------------------------------------------------
+tavily_tool = TavilySearchResults(max_results=5)
 
-# def search_internet(query: str) -> str:
-#     """Return concatenated snippets for the query."""
-#     return "\n".join(search.results(query, max_results=5))
+tools = [
+    Tool(
+        name="InternetSearch",
+        func=tavily_tool.run,
+        description="Use this to search the internet for information, such as frequent problems people face."
+    )
+]
 
-# search_tool = Tool(
-#     name="internet_search",
-#     description="Search the web for up-to-date information.",
-#     func=search_internet,
-# )
+# --------------------------------------------------
+# 3.  PROMPT (unchanged from your original)
+# --------------------------------------------------
+prompt_template = PromptTemplate.from_template(
+    """
+    You are an AI agent tasked with following this instruction precisely:
+    "make a business plan for micre saas serch for frequently problems from the interrnet and follw thise instruction to identify the problem Design a solution, system, or message that is:
 
-# # ------------------------------------------------------------------
-# # 3. Agent prompt
-# # ------------------------------------------------------------------
-# SYSTEM_PROMPT = """
-# You are an expert micro-SaaS strategist.  
-# Your ONLY goal is to create a business plan that follows the exact playbook below:
+    Built from atomic-level identity-based habits,
 
-# 1. Search the internet for FREQUENT, PAINFUL problems people are discussing.
-# 2. Pick ONE problem that is:
-#    - Recurring
-#    - Emotionally charged
-#    - Not yet elegantly solved
-# 3. Design a micro-SaaS solution that is:
-#    - Built from atomic-level identity-based habits (tiny repeatable actions that compound).
-#    - Validated rapidly through Build-Measure-Learn loops (MVP → metric → pivot).
-#    - Focused on scalable, controllable value (subscription, not hourly).
-#    - Optimized with high-leverage mental models (Pareto, Eisenhower, Flywheel, etc.).
-#    - Protected from bias by forcing slow-thinking checklists and disciplined routines.
-#    - Balanced against dopamine distraction by designing for delayed gratification (lock-in, streaks, commitment devices).
-#    - Communicated with sticky, memorable ideas (SUCCES: Simple, Unexpected, Concrete, Credible, Emotional, Stories).
-# 4. Ensure the plan compounds, adapts fast, scales wide, and sticks deep.
+    Validated rapidly through Build-Measure-Learn feedback loops,
 
-# Output a concise markdown report with these sections:
-# - Problem (with evidence snippets)
-# - Solution (micro-SaaS idea)
-# - Atomic Habit Loop
-# - Build-Measure-Learn roadmap
-# - Mental models used
-# - Anti-bias & delayed-gratification design
-# - Sticky messaging (tagline + story)
-# - Revenue model & scalability notes
+    Focused on scalable, controllable value (not time-for-money),
 
-# Do NOT add extra conversational text—only the report.
-# """
+    Optimized with high-leverage mental models and routines of top performers,
 
-# prompt = PromptTemplate.from_template(
-#     """{system}
+    Protected from bias and impulsivity through slow thinking and discipline,
 
-# Tools available:
-# {tools}
-# Tool names: {tool_names}
+    Balanced against dopamine-driven distraction by designing for delayed gratification,
 
-# Current scratchpad:
-# {agent_scratchpad}
+    And communicated using sticky, memorable ideas (Simple, Unexpected, Concrete, Credible, Emotional, Story-based).
 
-# Thought: {thought}
-# Action: {action}
-# Action Input: {action_input}
-# Observation: {observation}
-# ... (continue until ready)
-# Final Answer: <your markdown report>"""
-# )
+    Ensure it compounds, adapts fast, scales wide, and sticks deep."
 
-# # ------------------------------------------------------------------
-# # 4. Build ReAct agent
-# # ------------------------------------------------------------------
-# agent = create_react_agent(
-#     llm=llm,
-#     tools=[search_tool],
-#     prompt=prompt.partial(
-#         system=SYSTEM_PROMPT,
-#         tools="\n".join([t.name + ": " + t.description for t in [search_tool]]),
-#         tool_names=", ".join([t.name for t in [search_tool]])
-#     ),
-# )
-# executor = AgentExecutor(agent=agent, tools=[search_tool], verbose=True, handle_parsing_errors=True)
+    Available tools: {tools}
+    Tool names: {tool_names}
 
-# # ------------------------------------------------------------------
-# # 5. Save helper
-# # ------------------------------------------------------------------
-# def save_report(markdown: str) -> Path:
-#     base = Path("report.md")
-#     counter = 0
-#     while True:
-#         name = base.with_suffix(f".md{counter}" if counter else ".md")
-#         if not name.exists():
-#             name.write_text(markdown, encoding="utf-8")
-#             return name
-#         counter += 1
+    Use your tools to search the internet for frequent problems, identify one suitable for a micro SaaS, design a solution following the criteria, and output a complete business plan.
 
-# # ------------------------------------------------------------------
-# # 6. Run
-# # ------------------------------------------------------------------
-# if __name__ == "__main__":
-#     result = executor.invoke({"input": "Create the micro-SaaS business plan now."})
-#     file_path = save_report(result["output"])
-#     print(f"Report saved to {file_path.resolve()}")
+    Begin!
+
+    {agent_scratchpad}
+    """
+)
+
+# --------------------------------------------------
+# 4.  AGENT + EXECUTOR
+# --------------------------------------------------
+agent = create_react_agent(llm, tools, prompt_template)
+
+# We keep max_iterations low so we can checkpoint often.
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    verbose=True,
+    max_iterations=5,          # small chunk ⇒ quick restart
+    handle_parsing_errors=True
+)
+
+# --------------------------------------------------
+# 5.  STATE MANAGEMENT
+# --------------------------------------------------
+REPORT_FILE = Path("micro_saas_plan.md")
+
+def load_previous() -> str:
+    """Return everything written so far."""
+    if REPORT_FILE.exists():
+        return REPORT_FILE.read_text(encoding="utf-8")
+    return ""
+
+def append_chunk(text: str) -> None:
+    """Append the latest chunk to the report."""
+    with REPORT_FILE.open("a", encoding="utf-8") as f:
+        f.write("\n" + text)
+
+# --------------------------------------------------
+# 6.  MAIN LOOP
+# --------------------------------------------------
+def run_until_complete() -> None:
+    previous = load_previous()
+
+    # Initial prompt if file is empty.
+    if not previous.strip():
+        previous = "# Micro-SaaS Business Plan\n\n"
+        append_chunk(previous)
+
+    # Build scratchpad from previous output so the agent sees what it wrote.
+    scratchpad = previous
+
+    while True:
+        print("\n[CONTINUING] Resuming with scratchpad length:",
+              len(scratchpad))
+
+        response: Dict[str, Any] = agent_executor.invoke(
+            {"input": scratchpad}   # feed prior text as context
+        )
+
+        new_text = response.get("output", "")
+
+        # Simple heuristic: if the agent explicitly says "FINISHED" or
+        # we have written > 10 000 tokens, we stop.
+        finished = (
+            "FINISHED" in new_text.upper()
+            or len(new_text) < 50   # very short ⇒ probably stuck
+        )
+
+        append_chunk(new_text)
+        scratchpad += new_text
+
+        if finished:
+            print("\n[DONE] Plan appears complete.")
+            break
+
+        print("\n[LOOP] Checkpoint saved. Restarting agent...\n")
+
+# --------------------------------------------------
+# 7.  FIRE IT UP
+# --------------------------------------------------
+if __name__ == "__main__":
+    run_until_complete()
